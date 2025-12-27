@@ -1,0 +1,77 @@
+services:
+  rabbitmq:
+    image: rabbitmq:3-management
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  orders-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: orders
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d orders"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  payments-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: payments
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5434:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d payments"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  orders-service:
+    build:
+      context: .
+      dockerfile: OrdersService/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      orders-db:
+        condition: service_healthy
+    environment:
+      ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__OrdersDb: Host=orders-db;Port=5432;Database=orders;Username=postgres;Password=postgres
+      RabbitMq__Host: rabbitmq
+      RabbitMq__User: guest
+      RabbitMq__Password: guest
+    ports:
+      - "8081:8080"
+
+  payments-service:
+    build:
+      context: .
+      dockerfile: PaymentsService/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      payments-db:
+        condition: service_healthy
+    environment:
+      ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__PaymentsDb: Host=payments-db;Port=5432;Database=payments;Username=postgres;Password=postgres
+      RabbitMq__Host: rabbitmq
+      RabbitMq__User: guest
+      RabbitMq__Password: guest
+    ports:
+      - "8082:8080"
